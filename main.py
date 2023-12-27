@@ -1,6 +1,7 @@
 import glob
 import os
 import re
+import sys
 from logging import INFO
 from pathlib import Path
 
@@ -36,8 +37,9 @@ poster_template: Image.Image | None = None
 painting_template: Image.Image | None = None
 
 
-# Gets the appropriate image `i` from the given input image index.
 def get_image(i: int) -> Image.Image:
+    """Gets the appropriate image `i` from the given input image index."""
+
     try:
         return input_images[i % len(input_images)].copy()
     except IndexError as e:
@@ -45,11 +47,12 @@ def get_image(i: int) -> Image.Image:
         LOGGER.debug(f"input_images size = {len(input_images)}")
         LOGGER.exception(f"{e}")
         LOGGER.info("Exiting to prevent image warfare...")
-        exit()
+        sys.exit(1)
 
 
-# Generates the painting atlas and inserts the image(s) onto the atlas.
 def generate_atlas(i: int) -> Image.Image:
+    """Generates the painting atlas and inserts the image(s) onto the atlas."""
+
     base = poster_template.copy()
     posters: list[Image.Image] = [get_image(i + j) for j in range(5)]
     for i, o in enumerate(POSTER_PIXEL_OFFSETS):
@@ -58,25 +61,24 @@ def generate_atlas(i: int) -> Image.Image:
     return base
 
 
-# Generates a tip image using the given input image index.
 def generate_tips(i: int) -> Image.Image:
+    """Generates a tip image using the given input image index."""
+
     base = Image.new(("RGBA" if output_format < 2 else "RGB"), TIPS_SIZE)
     tip = ImageOps.contain(get_image(i), TIPS_SIZE, Image.Resampling.LANCZOS)
     base.paste(tip, (TIPS_SIZE[0] - tip.width, 0))
     return base
 
 
-# Generates a painting image using the given input image index.
 def generate_painting(i: int) -> Image.Image:
+    """Generates a painting image using the given input image index."""
+
     base = painting_template.copy()
     painting = ImageOps.fit(get_image(i), PAINTING_SIZE, Image.Resampling.LANCZOS)
     base.paste(painting, PAINTING_PIXEL_OFFSET)
     return base
 
 
-################################
-# MAIN EXECUTION
-################################
 def main():
     global input_images
     global output_format
@@ -100,31 +102,49 @@ def main():
         LOGGER.exception(f"{e}")
         LOGGER.info("Missing templates!!!")
         LOGGER.info("Exiting to prevent image warfare...")
-        exit()
+        sys.exit(1)
 
     # Ask the user for file format and compression
     LOGGER.info("Select the desired output format!")
-    LOGGER.info("\t0) PNG")
-    LOGGER.info("\t1) PNG (Optimised)")
-    LOGGER.info("\t2) JPG")
-    LOGGER.info("\t3) JPG (Compressed)")
+    LOGGER.info("\t0) PNG - Raw")
+    LOGGER.info("\t1) PNG - Modified")
+    LOGGER.info("\t2) JPG - Raw")
+    LOGGER.info("\t3) JPG - Modified")
+
     output_format = int(input("> "))
     if output_format < 0 or output_format > 3:
         LOGGER.err("Format was invalid.")
-        exit()
-    format_string = ["png", "png", "jpg", "jpg"][output_format]
+        sys.exit(1)
+    is_png = output_format < 2
 
-    should_optimise = output_format == 1 or output_format == 3
-    if output_format == 3:
+    format_string = ["png", "png", "jpg", "jpg"][output_format]
+    is_modified = output_format == 1 or output_format == 3
+
+    if is_modified:
         LOGGER.info("How much compression do you want?")
-        LOGGER.info("\t(1 = Best Compression, 95 = Best Quality)")
+        if not is_png:
+            LOGGER.info("\t(0=Best Compression, 75=Default, 95=Best Quality)")
+        else:
+            LOGGER.info("\t(0=None, 1=Best Quality, 6=Default, 9=Best Compression)")
         LOGGER.info(
-            "\tPlease note that the more compression you apply, the longer it takes to process the image."
+            "\tThe more compression you apply, the longer it takes to process the image."
         )
-        compression = int(input("> "))
-        if compression < 1 or output_format > 95:
+        compression_level = int(input("> "))
+        if (
+            compression_level < 0
+            or (not is_png and compression_level > 95)
+            or (is_png and compression_level > 9)
+        ):
             LOGGER.err("Compression number was invalid.")
-            exit()
+            sys.exit(1)
+
+        LOGGER.info("Do you want to optimise the image? (true/false)")
+        LOGGER.info(
+            "\tIt will only save a couple KB at most, but takes significantly longer to process!"
+        )
+        if output_format < 2:
+            LOGGER.info("\tThis will set the compression level to 9 automatically!")
+        should_optimise = bool(input("> "))
 
     # Loading all input images into a list
     LOGGER.debug("Loading input images...")
@@ -139,6 +159,9 @@ def main():
                 filename, ext = os.path.splitext(_file)
                 input_images.append(Image.open(_file))
                 input_images_filenames.append(filename + ext)
+            else:
+                LOGGER.error("Could not find any input images!")
+                sys.exit(1)
     LOGGER.info(f"Successfully loaded images after {t_total.duration_human}!")
 
     # Do image processing
@@ -161,58 +184,35 @@ def main():
             LOGGER.info(f"ITER {i} | Generated images after {t0.duration_human}.")
             bar.text(f"Generated images after {t0.duration_human}.")
 
-            if output_format == 2 or output_format == 3:
+            if not is_png:
                 with about_time() as t2:
                     poster = poster.convert("RGB")
                     tips = tips.convert("RGB")
                     painting = painting.convert("RGB")
-
                 LOGGER.info(
                     f"ITER {i} | Converted images to RGB after {t2.duration_human}."
                 )
 
             with about_time() as t1:
-                if output_format == 3:
-                    poster.save(
-                        f"{POSTERS_DIR}/{i}.{format_string}",
-                        optimize=should_optimise,
-                        quality=compression,
-                    )
-                    tips.save(
-                        f"{TIPS_DIR}/{i}.{format_string}",
-                        optimize=should_optimise,
-                        quality=compression,
-                    )
-                    painting.save(
-                        f"{PAINTINGS_DIR}/{i}.{format_string}",
-                        optimize=should_optimise,
-                        quality=compression,
-                    )
-                elif should_optimise:
-                    poster.save(
-                        f"{POSTERS_DIR}/{i}.{format_string}",
-                        optimize=should_optimise,
-                    )
-                    tips.save(
-                        f"{TIPS_DIR}/{i}.{format_string}",
-                        optimize=should_optimise,
-                    )
-                    painting.save(
-                        f"{PAINTINGS_DIR}/{i}.{format_string}",
-                        optimize=should_optimise,
-                    )
-                else:
-                    poster.save(
-                        f"{POSTERS_DIR}/{i}.{format_string}", optimize=should_optimise
-                    )
-                    tips.save(
-                        f"{TIPS_DIR}/{i}.{format_string}", optimize=should_optimise
-                    )
-                    painting.save(
-                        f"{PAINTINGS_DIR}/{i}.{format_string}", optimize=should_optimise
-                    )
+                poster.save(
+                    f"{POSTERS_DIR}/{i}.{format_string}",
+                    optimize=should_optimise,
+                    quality=compression_level,
+                    compress_level=compression_level,
+                )
+                tips.save(
+                    f"{TIPS_DIR}/{i}.{format_string}",
+                    optimize=should_optimise,
+                    quality=compression_level,
+                    compress_level=compression_level,
+                )
+                painting.save(
+                    f"{PAINTINGS_DIR}/{i}.{format_string}",
+                    optimize=should_optimise,
+                    quality=compression_level,
+                    compress_level=compression_level,
+                )
             LOGGER.info(f"ITER {i} | Saved images after {t1.duration_human}.")
-            LOGGER.info("------------")
             bar.text(f"Saved images after {t1.duration_human}.")
     bar.text(f"Completed after {t_total.duration_human}!")
 
