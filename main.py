@@ -1,3 +1,5 @@
+"""This is not a module!"""
+
 import glob
 import os
 import re
@@ -9,7 +11,6 @@ import structlog
 from about_time import about_time
 from alive_progress import alive_it, styles
 from PIL import Image, ImageOps, UnidentifiedImageError
-from rich import print
 
 # Global Constants
 structlog.configure(wrapper_class=structlog.make_filtering_bound_logger(INFO))
@@ -31,10 +32,12 @@ PAINTING_SIZE = (243, 324)
 
 
 # Global Variables
+# pylint: disable=invalid-name
 input_images: list[Image.Image] = []
 output_format = 0
 poster_template: Image.Image | None = None
 painting_template: Image.Image | None = None
+# pylint: enable=invalid-name
 
 
 def get_image(i: int) -> Image.Image:
@@ -80,10 +83,14 @@ def generate_painting(i: int) -> Image.Image:
 
 
 def main():
+    """It's literally the main entry point."""
+
+    # pylint: disable=global-variable-not-assigned, global-statement
     global input_images
     global output_format
     global poster_template
     global painting_template
+    # pylint: enable=global-variable-not-assigned, global-statement
 
     # Create directories
     if not Path("input").exists() or not Path("output").exists():
@@ -152,7 +159,7 @@ def main():
         input_images_filenames: list[str] = []
         for _file in glob.iglob("input/*.*"):
             if re.match(
-                ".*\.(png|jpg|jpeg|PNG|JPG|JPEG|Png|Jpg|Jpeg)",
+                r".*\.(png|jpg|jpeg|PNG|JPG|JPEG|Png|Jpg|Jpeg)",
                 _file,
                 flags=re.RegexFlag.IGNORECASE,
             ):
@@ -166,6 +173,7 @@ def main():
 
     # Do image processing
     LOGGER.debug("Processing images...")
+    # pylint: disable=disallowed-name
     bar = alive_it(
         enumerate(input_images),
         finalize=lambda bar: bar.text(
@@ -173,6 +181,7 @@ def main():
         ),
         bar=styles.BARS.get("bubbles"),
     )
+    # pylint: enable=disallowed-name
     with about_time() as t_total:
         for i, _img in bar:
             LOGGER.debug(f"ITER {i} | Generating...")
