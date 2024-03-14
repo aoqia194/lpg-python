@@ -153,6 +153,15 @@ def main():
             LOGGER.info("\tThis will set the compression level to 9 automatically!")
         should_optimise = bool(input("> "))
 
+        if is_png:
+            LOGGER.info("How many colours to use for the palette?")
+            LOGGER.info("0=Unchanged, 8, 16, 24, 32 .. 256=Max)")
+            pixel_colours = int(input("> "))
+            if (pixel_colours < 0 or pixel_colours > 256):
+                LOGGER.err("Pixel colours was invalid.")
+                sys.exit(1)
+            change_pixel_colours = pixel_colours > 0
+
     # Loading all input images into a list
     LOGGER.debug("Loading input images...")
     with about_time() as t_total:
@@ -201,6 +210,11 @@ def main():
                 LOGGER.info(
                     f"ITER {i} | Converted images to RGB after {t2.duration_human}."
                 )
+            
+            if change_pixel_colours:
+                poster = poster.convert("P", palette=Image.Palette.ADAPTIVE, colors=pixel_colours)
+                tips = tips.convert("P", palette=Image.Palette.ADAPTIVE, colors=pixel_colours)
+                painting = painting.convert("P", palette=Image.Palette.ADAPTIVE, colors=pixel_colours)
 
             with about_time() as t1:
                 poster.save(
